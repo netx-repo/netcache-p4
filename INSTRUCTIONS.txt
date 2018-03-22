@@ -1,0 +1,58 @@
+================================================= 0 Introduction ==================================================
+In this repository, I implemented a simple NetCache with standard P4 language and designed an experiemnt with behavior model to show the efficiency of NetCache.
+
+I create a network with mininet, containing 1 switch and 3 hosts. One host is the server, which handles READ queries. One host is the client, which sends READ queries. The last host is to simulate the controller of the programmable switch, because the behavior model does not provide such an interface.
+
+The experiemnts runs in the following steps. First, the switch starts. Some table entries are added. Second, the server starts. The server loads pre-generated key-value items. Third, the controller starts. The controller sends some UPDATE queries to the server to get values of some pre-determined hot items, and insert them to the switch. Finally, the client starts. The client sends READ queries to the server and receives replies. If a query hits the cache in the switch, the switch would directly reply this query without routing it to the server.
+
+If some uncached items are detected to be hot by the heavy-hitter, the switch would send a HOT_READ to the controller.
+================================================= 1 Obtaining required software ==================================================
+It is recommended to do the following things in the directory "NetCache/".
+
+Firstly, you need to get the p4 compiler from Github, and install required dependencies.
+git clone https://github.com/p4lang/p4c-bm.git p4c-bmv2
+cd p4c-bmv2
+sudo pip install -r requirements.txt
+
+Secondly, you need to get the behavior model of p4 from github, install dependencies and compile the behavior model.
+git clone https://github.com/p4lang/behavioral-model.git bmv2
+cd bmv2
+install_deps.sh
+./autogen.sh
+./configure
+make
+
+Finally, you need to install some other tools which are used in this simulation.
+sudo apt-get install mininet python-ipaddr
+sudo pip install scapy thrift networkx
+
+If you do not do the above things in "NetCache/", you need to modify the path to p4c-bmv2 and bmv2 in NetCache/mininet/run_demo.sh.
+================================================= 2 Content ==================================================
+NetCache/generator: Python programs, which generates key-value items and queries.
+
+NetCache/client: Two Python programs for the client. "send.py" can read queries from the "query.txt" file and send queries to the server. "receive.py" can receive replies from the server and the switch. In addition, both of these programs can print current READ throughput to the screen.
+
+NetCache/server: One Python program for the server. "server.py" can read key-value items from the "kv.txt" file, and reply UPDATE queries from the controller and READ queries from the client. In addition, this program can print current READ throughput to the screen.
+
+NetCache/p4src: Codes for the NetCache in standard P4 language.
+
+NetCache/controller: One Python program for the controller. "controller.py" can read hot keys from the "hot.txt" file, and send UPDATE requests to the server. Then the switch would insert values to the cache when detect UDPATE replies from the server. After updating the cache of the switch, the controller would wait for "HOT_READ" packets, which shows that a key is detected as hot. In addition, this program can print HOT_READ reports with heavy hitter information to the screen.
+
+NetCache/mininet: Scripts to run the experiments.
+
+================================================= 3 Run Simulation ==================================================
+Experiment configuration: IP address "10.0.0.1" is for the client. IP address "10.0.0.2" is for the server. IP address "10.0.0.3" is for the controller. There are 1000 key-value items in total, following zipf-0.90 distribution. Items whose keys are 1, 3, 5, ..., 99 will be inserted to the cache of the switch, and items whose keys are 2, 4, ..., 100 will be detected as hot items and reported to the controller after running for several seconds. If an uncached item is accessed for 128 times, it would be reported to the controller, and this parameter can be changed in "NetCache/p4src/heavy_hitter.p4".
+
+Before the experiment starts, you need to generate some files. Run "python gen_kv.py" in "NetCache/generator", and you will get "kv.txt" and "hot.txt". Copy "kv.txt" to "NetCache/server" and copy "hot.txt" to "NetCache/controller". Then run "python gen_query_zipf.py" in "NetCache/generator", and you will get "query.txt". It takes several minutes. Then copy "query.txt" to "NetCache/client".
+
+To initialize the environment, open a terminal in "NetCache/mininet", and run "./run_demo.sh". After you can see "Ready! Starting CLI: mininet>", you can begin to run the experiment. In the following description, I will call this terminal "mininet terminal".
+
+Firstly, in the mininet terminal, run "xterm h2" to open a terminal for the server. In the new terminal, enter "NetCache/server" by running "cd ../server" and run "python server.py". Then the server starts. You can see two numbers, which are the number of READ queries in one second and the total number of READ queries in the past time.
+
+Secondly, in the mininet terminal, run "xterm h3" to open a terminal for the controller. In the new terminal, enter "NetCache/controller" by running "cd ../controller" and run "python controller.py". Then the controller starts. When the controller receives a HOT_READ report, the detected key and values of the heavy hitter will be displayed.
+
+Thidly, in the mininet terminal, run "xterm h1" to open a terminal for "receive.py" of the client. In the new terminal, enter "NetCache/client" by running "cd ../client" and run "python receive.py". Then you can see the number of READ replies received per second and the total number of READ replies in the past time.
+
+Finally, in the mininet terminal, run "xterm h1" to open a terminal for "send.py" of the client. In the new terminal, enter "NetCache/client" by running "cd ../client" and run "python send.py". THen you can the number of READ replies received per second and the total number of READ replies in the past time. At the same time, the displayed numbers of the server and the "receive.py" will change with the "send.py", and after several seconds the controller will show the detected hot keys.
+
+In addition,  READ replies received by the "receive.py" is more than READ requests handled by the server. This is because some queries are handled by the switch.
